@@ -85,14 +85,6 @@ class Player extends React.Component<IProps, IState> {
                     currentKey: keyboard.keypress,
                     previousKey: keyboard.previousKey
                 });
-
-                if(keyboard.isPressed && !this.state.isWalking) {
-                    playerService.walk(keyboard.keypress);
-                }
-
-                if(!keyboard.isPressed) {
-                    playerService.stop();
-                }
             });
         
         playerService.getState
@@ -125,7 +117,6 @@ class Player extends React.Component<IProps, IState> {
             this.setState({ animator: this.state.animator });
             requestAnimationFrame(() => this.animate());
         }, 600/this.state.animator.spritesLength);
-
     }
 
     switchAnimatorIdle = () => {
