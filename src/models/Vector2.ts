@@ -12,6 +12,10 @@ export default class Vector2 {
     left = () => this.x--;
     right = () => this.x++;
     
+    valueOf() {
+        return this.x + this.y;
+    }
+
     increment = (vector: Vector2): Vector2 => {
         this.x += vector.x;
         this.y += vector.y;
@@ -35,6 +39,18 @@ export default class Vector2 {
 
     scale = (scale: number): Vector2 => {
         this.x *= scale;
+        this.y *= scale;
+        
+        return new Vector2(this.x, this.y);
+    }
+
+    scaleX = (scale: number): Vector2 => {
+        this.x *= scale;
+        
+        return new Vector2(this.x, this.y);
+    }
+
+    scaleY = (scale: number): Vector2 => {
         this.y *= scale;
         
         return new Vector2(this.x, this.y);

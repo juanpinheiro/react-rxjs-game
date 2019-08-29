@@ -5,7 +5,7 @@ import { EKeyboard } from 'shared/enums';
 const INITIAL_STATE: IKeyboardState = {
     keypress: EKeyboard.NONE,
     previousKey: EKeyboard.NONE,
-    isPressed: false
+    isPressed: 0
 }
 
 class KeyboardService extends Store<IKeyboardState> {
@@ -14,8 +14,8 @@ class KeyboardService extends Store<IKeyboardState> {
         super(INITIAL_STATE);
     }
 
-    setKeypress = (keypress: EKeyboard) => {
-        this.setState({ keypress, isPressed: !!keypress, previousKey: this.currentState().keypress });
+    setKeypress = (keypress: EKeyboard, isPressed: number) => {
+        this.setState({ keypress, isPressed, previousKey: this.currentState().keypress });
     }
 
 }

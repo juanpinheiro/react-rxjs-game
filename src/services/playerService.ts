@@ -2,118 +2,102 @@ import Store from 'services/store';
 import Vector2 from 'models/Vector2';
 import { EKeyboard } from 'shared/enums';
 import mapService from './mapService';
-import { Subject } from 'rxjs';
+import { combineLatest, Observable, interval, range, asyncScheduler, queueScheduler } from 'rxjs';
 import keyboardService from './keyboardService';
-import { distinctUntilChanged } from 'rxjs/operators';
+import { distinctUntilChanged, map, switchMap, zip, skip, throttleTime, filter, tap } from 'rxjs/operators';
+import { BehaviorSubject } from 'rxjs';
+
 
 interface IPlayerState {
-    isWalking: boolean;
+    animationInProgress: boolean;
     coordinates: Vector2;
     position: Vector2;
 }
 
 const INITIAL_STATE: IPlayerState = {
-    isWalking: false,
+    animationInProgress: false,
     coordinates: new Vector2(),
     position: new Vector2()
 }
 
 class PlayerService extends Store<IPlayerState> {
-    private coordinates$ = new Subject<Vector2>();
-    private position$ = new Subject<Vector2>();
+    private PLAYER_SPEED = 18;
+    private PLAYER_POSITION_FRAMES = 16;
+
+    private coordinates$ = new BehaviorSubject<Vector2>(new Vector2());
+    private position$ = new BehaviorSubject<Vector2>(new Vector2());
 
     constructor() {
         super(INITIAL_STATE);
 
-        keyboardService.getState
-            .pipe(
+        combineLatest(
+            keyboardService.getState.pipe(
                 distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
-            )
-            .subscribe((keyboard) => {
-                const nextCoordinates = this.currentState().coordinates.copy();
-                
+            ),
+            this.getState.pipe(
+                distinctUntilChanged((a, b) => JSON.stringify(a.coordinates) === JSON.stringify(b.coordinates)),
+                map((state) => {
+                    return new Vector2(state.coordinates.x, state.coordinates.y)
+                })
+            ),
+        )
+        .pipe(throttleTime((this.PLAYER_SPEED * this.PLAYER_POSITION_FRAMES)))
+        .subscribe(([keyboard, coordinates]) => {
+            const newCoordinates = new Vector2(coordinates.x, coordinates.y);
+            if (this.validateCoordinates(newCoordinates)) {
                 switch(keyboard.keypress) {
                     case EKeyboard.UP:
-                        nextCoordinates.up();
+                        newCoordinates.up();
                         break;
                     case EKeyboard.DOWN:
-                        nextCoordinates.down();
+                        newCoordinates.down();
                         break;
                     case EKeyboard.LEFT:
-                        nextCoordinates.left();
+                        newCoordinates.left();
                         break;
                     case EKeyboard.RIGHT:
-                        nextCoordinates.right();
+                        newCoordinates.right();
                         break;
                 }
-
-                if (this.validateCoordinates(nextCoordinates)) {
-                    if (keyboard.isPressed && keyboard.keypress !== keyboard.previousKey) {
-                        this.coordinates$.next(nextCoordinates.copy());
-                        this.setState({ isWalking: true });
-                    }
-
-                    if (!keyboard.isPressed) {
-                        this.setState({ isWalking: false });
-                    }
+                
+                if (keyboard.isPressed > 0) {
+                    this.coordinates$.next(newCoordinates);
                 }
-            });
+            }
+        });
 
-        this.coordinates$.asObservable()
-            .subscribe((coordinates) => {
+
+        this.defineCoordinates()
+            .subscribe(([coordinates]) => {
                 this.setState({ coordinates });
-
-                const newPosition = coordinates.copy().scale(mapService.tileWidth);
-
-                this.position$.next(newPosition);
             });
 
-        this.position$.asObservable()
+        this.definePosition()
             .subscribe((position) => {
                 this.setState({ position });
-            })
-    
-    }
-    
-    public walk = (keyboard: EKeyboard) => {
-        this.setState({ isWalking: true });
-
-        const currentCoordinates = this.currentState().coordinates;
-        const newCoordinates = currentCoordinates.copy();
-        
-        if (this.validateCoordinates(newCoordinates)) {
-
-            switch(keyboard) {
-                case EKeyboard.UP:
-                    newCoordinates.up();
-                    break;
-                case EKeyboard.DOWN:
-                    newCoordinates.down();
-                    break;
-                case EKeyboard.LEFT:
-                    newCoordinates.left();
-                    break;
-                case EKeyboard.RIGHT:
-                    newCoordinates.right();
-                    break;
-            }
-
-            const TILE_SIZE = mapService.tileWidth;
-
-            this.setState({
-                coordinates: newCoordinates.copy()
+                this.position$.next(position);
             });
+    }
 
-            const newPosition = newCoordinates.scale(TILE_SIZE);
-            this.changePosition(newPosition, keyboard);
-        }
+    private defineCoordinates = () => {
+        return combineLatest(
+            this.coordinates$.pipe(
+                distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
+            ),
+            this.position$.pipe(
+                distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
+            )
+        ).pipe(
+            filter(([coordinates, position]) => {
+                const nextPosition = new Vector2(coordinates.x, coordinates.y).scale(16);
+                return nextPosition.x === position.x && nextPosition.y === position.y
+            })
+        ).pipe(
+            tap(() => this.setState({ animationInProgress: false }))
+        );
     }
     
-    public stop = () => {
-        this.setState({ isWalking: false });
-    }
-
-
+    
     private validateCoordinates = (coordinates: Vector2) => {
         const MAP_WIDTH = mapService.width;
         const MAP_HEIGHT = mapService.height;
@@ -129,57 +113,53 @@ class PlayerService extends Store<IPlayerState> {
         return true;
     }
 
-    private changePosition = (newPosition: Vector2, keyboard: EKeyboard) => {
+    private definePosition = (): Observable<Vector2> => {
+        return this.coordinates$.asObservable()
+            .pipe(
+                skip(1),
+                throttleTime(this.PLAYER_SPEED * this.PLAYER_POSITION_FRAMES),
+                distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+                switchMap(
+                    (coordinates) => range(1, this.PLAYER_POSITION_FRAMES)
+                    .pipe(
+                        zip(interval(this.PLAYER_SPEED), (frame) => this.verifyNextPosition(frame, coordinates))
+                ))
+            );
+    }
 
-        const position = this.currentState().position;
+    private verifyNextPosition = (scale, nextCoordenates: Vector2) => {
+        const prevCoordenates = new Vector2(this.currentState().coordinates.x, this.currentState().coordinates.y);
+        const prevPosition = new Vector2(prevCoordenates.x, prevCoordenates.y).scale(16);
 
-        let x: number = position.x;
-        let y: number = position.y;
-        let next: boolean = false;
-
-        if (newPosition.x > position.x) {
-            x = x + 2;
-            y = position.y;
-            next = x + 2 <= newPosition.x;
+        if (prevCoordenates.x < nextCoordenates.x) {
+            return new Vector2(
+                (prevPosition.x + scale) * (mapService.tileWidth / this.PLAYER_POSITION_FRAMES),
+                prevPosition.y
+            );
         }
 
-        if (newPosition.x < position.x) {
-            x = position.x - 2;
-            y = position.y;
-            
-            next = x - 2 >= newPosition.x;
+        if (prevCoordenates.x > nextCoordenates.x) {
+            return new Vector2(
+                (prevPosition.x - scale)  * (mapService.tileWidth / this.PLAYER_POSITION_FRAMES),
+                prevPosition.y
+            );
         }
 
-        if (newPosition.y > position.y) {
-            x = position.x;
-            y = position.y + 2;
-
-            next = y + 2 <= newPosition.y;
+        if (prevCoordenates.y > nextCoordenates.y) {
+            return new Vector2(
+                prevPosition.x,
+                (prevPosition.y - scale) * (mapService.tileWidth / this.PLAYER_POSITION_FRAMES),
+            );        
         }
 
-        if (newPosition.y < position.y) {
-            x = position.x;
-            y = position.y - 2;
-            
-            next = y - 2 >= newPosition.y;
+        if (prevCoordenates.y < nextCoordenates.y) {
+            return new Vector2(
+                prevPosition.x,
+                (prevPosition.y + scale) * (mapService.tileWidth / this.PLAYER_POSITION_FRAMES),
+            );        
         }
 
-        if (next) {
-            setTimeout(() => {
-                this.setState({ position: new Vector2(x, y)});
-                this.changePosition(newPosition, keyboard);
-            }, 10);
-        }
-
-        if(!next) {
-            console.log(newPosition);
-            this.setState({ position: newPosition });
-
-            if(this.currentState().isWalking) {
-                console.log('walk');
-                this.walk(keyboard);
-            }
-        }
+        return new Vector2();        
     }
 }
 

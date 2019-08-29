@@ -4,13 +4,13 @@ import keyboardService from 'services/keyboardService';
 
 interface IKeyboardState {
     keypress: string;
-    isKeypressed: boolean;
+    isKeypressed: number;
 }
 
 export const withKeyboard = <T extends object>(WrappedComponent: React.ComponentClass<T>) => class Keyboard extends React.Component<T, IKeyboardState> {
     state = {
         keypress: '',
-        isKeypressed: false
+        isKeypressed: 0
     }
     
     componentDidMount() {
@@ -19,18 +19,20 @@ export const withKeyboard = <T extends object>(WrappedComponent: React.Component
     }
 
     onKeyDown = (event: any) => {
+        this.setState({ isKeypressed: this.state.isKeypressed + 1 });
+        
         switch(event.key) {
             case EKeyboard.UP:
-                keyboardService.setKeypress(event.key as EKeyboard.UP);
+                keyboardService.setKeypress(event.key as EKeyboard.UP, this.state.isKeypressed);
                 return;
             case EKeyboard.DOWN:
-                keyboardService.setKeypress(event.key as EKeyboard.DOWN);
+                keyboardService.setKeypress(event.key as EKeyboard.DOWN, this.state.isKeypressed);
                 return;
             case EKeyboard.LEFT:
-                keyboardService.setKeypress(event.key as EKeyboard.LEFT);
+                keyboardService.setKeypress(event.key as EKeyboard.LEFT, this.state.isKeypressed);
                 return;
             case EKeyboard.RIGHT:
-                keyboardService.setKeypress(event.key as EKeyboard.RIGHT);
+                keyboardService.setKeypress(event.key as EKeyboard.RIGHT, this.state.isKeypressed);
                 return;
         }
     }
@@ -41,7 +43,7 @@ export const withKeyboard = <T extends object>(WrappedComponent: React.Component
             case EKeyboard.DOWN:
             case EKeyboard.LEFT:
             case EKeyboard.RIGHT:
-                keyboardService.setKeypress(EKeyboard.NONE);
+                keyboardService.setKeypress(EKeyboard.NONE, 0);
                 return;
         }
     }

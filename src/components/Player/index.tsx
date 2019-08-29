@@ -17,7 +17,6 @@ import { EKeyboard } from 'shared/enums';
 import playerService from 'services/playerService';
 import { bindComponent } from 'shared/operators/bindComponent';
 import { IVector2 } from 'shared/interfaces';
-import keyboardService from 'services/keyboardService';
 import { distinctUntilChanged } from 'rxjs/operators';
 
 interface IProps {
@@ -74,18 +73,6 @@ class Player extends React.Component<IProps, IState> {
 
     componentDidMount() {
         this.animate();
-
-        keyboardService.getState
-            .pipe(
-                bindComponent(this),
-                distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
-            )
-            .subscribe((keyboard) => {
-                this.setState({
-                    currentKey: keyboard.keypress,
-                    previousKey: keyboard.previousKey
-                });
-            });
         
         playerService.getState
             .pipe(
@@ -93,21 +80,12 @@ class Player extends React.Component<IProps, IState> {
                 distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b))
             )
             .subscribe((player) => {
-                this.setState({ isWalking: player.isWalking });
                 this.setState({
                     position: {
                         x: player.position.x,
                         y: player.position.y,
                     }
                 });
-
-                if (player.isWalking) {
-                    this.switchAnimatorWalk();
-                }
-
-                if (!player.isWalking) {
-                    this.switchAnimatorIdle();
-                }
             });
     }
 
